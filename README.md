@@ -1,5 +1,7 @@
 # Anemos — Pakistan Air Quality Analytics
 
+[**Live Demo**](https://anemos-livid.vercel.app/)
+
 ## Project Overview
 
 Anemos is a web dashboard for exploring air quality in seven Pakistani cities. It brings current estimates, short-term forecasts, and city comparisons into one place. Residents, students, and others following air pollution can use it to see how conditions vary across cities and over the next day.
@@ -106,4 +108,4 @@ Both full-page Chromium captures show Peshawar with live Open-Meteo estimates va
 
 ## Deployment
 
-Public deployment is pending. Before launch, verify HTTPS and proxy settings, traffic limits, and provider quotas for the expected usage.
+Anemos is hosted on Vercel.
