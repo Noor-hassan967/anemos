@@ -74,6 +74,28 @@
             </article>
         </section>
 
+        <section class="panel comparison-section" aria-labelledby="comparison-heading">
+            <h2 id="comparison-heading">Compare Air Quality Across Pakistan</h2>
+            <p>Latest available modeled air-quality estimates for major cities.</p>
+            <p id="comparison-status" role="status">Loading city comparisons...</p>
+
+            <div id="comparison-scroll" class="table-container" role="region"
+                aria-labelledby="comparison-heading" tabindex="0" hidden>
+                <table id="comparison-table" aria-labelledby="comparison-heading">
+                    <thead>
+                        <tr>
+                            <th scope="col">City</th>
+                            <th scope="col">US AQI</th>
+                            <th scope="col">Category</th>
+                            <th scope="col">PM2.5 (µg/m³)</th>
+                            <th scope="col">PM10 (µg/m³)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="comparison-body"></tbody>
+                </table>
+            </div>
+        </section>
+
         <footer>
             <p id="updated-at">Data time: Not available</p>
             <p>

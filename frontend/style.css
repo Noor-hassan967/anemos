@@ -172,6 +172,65 @@ button:focus-visible, select:focus-visible {
     max-height: 320px;
 }
 
+.comparison-section {
+    margin-top: 22px;
+    min-height: 0;
+}
+
+.comparison-section h2 {
+    margin-bottom: 6px;
+}
+
+.comparison-section p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+#comparison-status:not(:empty) {
+    margin-top: 12px;
+}
+
+.table-container {
+    margin-top: 16px;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.table-container:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+}
+
+#comparison-table {
+    width: 100%;
+    min-width: 540px;
+    border-collapse: collapse;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+}
+
+#comparison-table th,
+#comparison-table td {
+    padding: 10px 14px;
+    text-align: left;
+}
+
+#comparison-table thead {
+    background: #0c1726;
+    color: #cbd5e1;
+}
+
+#comparison-table tbody tr {
+    border-top: 1px solid var(--border);
+}
+
+#comparison-table :is(th, td):is(:nth-child(2), :nth-child(n+4)) {
+    text-align: right;
+    white-space: nowrap;
+}
+
 footer {
     border-top: 1px solid var(--border);
     margin-top: 35px;
