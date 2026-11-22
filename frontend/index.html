@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PakAir | Pakistan Air Quality Analytics</title>
+    <title>Anemos | Pakistan Air Quality Analytics</title>
+    <meta name="description" content="Anemos shows modeled air quality estimates, forecasts, and comparisons for seven Pakistani cities.">
+    <link rel="icon" href="assets/anemos-favicon.ico" sizes="16x16 32x32 48x48">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
@@ -11,102 +13,190 @@
         integrity="sha384-T/4KgSWuZEPozpPz7rnnp/5lDSnpY1VPJCojf1S81uTHS1E38qgLfMgVsAeRCWc4" crossorigin="anonymous" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous" defer></script>
+    <script src="forecast.js" defer></script>
     <script src="app.js" defer></script>
 </head>
 <body>
+    <a class="skip-link" href="#main-content">Skip to air quality data</a>
 
-    <header>
-        <div class="brand">Pak<span>Air</span></div>
-        <p>Pakistan Air Quality Analytics</p>
+    <header class="masthead">
+        <div class="page-shell masthead-inner">
+            <a class="brand" href="/" aria-label="Anemos, Pakistan Air Quality Analytics">
+                <img src="assets/anemos-symbol.png" width="130" height="113" alt="">
+                <span class="brand-wordmark">Ane<span>mos</span></span>
+            </a>
+            <nav aria-label="On this page">
+                <ul class="section-links">
+                    <li><a href="#forecast">Forecast</a></li>
+                    <li><a href="#compare">Compare</a></li>
+                    <li><a href="#aqi-guide">AQI guide</a></li>
+                </ul>
+            </nav>
+        </div>
     </header>
 
-    <main>
-        <section class="hero">
-            <div>
-                <h1>Explore Pakistan's Air Quality</h1>
-                <p>Latest available air-quality estimates and forecasts.</p>
+    <main id="main-content" class="page-shell" tabindex="-1">
+        <section class="current-section" aria-labelledby="current-heading">
+            <div class="current-header">
+                <h1 id="current-heading">Air quality in Peshawar</h1>
+
+                <div class="controls">
+                    <label for="city-select">City</label>
+                    <div class="control-actions">
+                        <select id="city-select">
+                            <option>Peshawar</option>
+                            <option>Lahore</option>
+                            <option>Karachi</option>
+                            <option>Islamabad</option>
+                            <option>Quetta</option>
+                            <option>Multan</option>
+                            <option>Faisalabad</option>
+                        </select>
+                        <button id="refresh-btn" type="button">Refresh data</button>
+                    </div>
+                </div>
             </div>
 
-            <div class="controls">
-                <label for="city-select">Select City</label>
-                <select id="city-select">
-                    <option>Peshawar</option>
-                    <option>Lahore</option>
-                    <option>Karachi</option>
-                    <option>Islamabad</option>
-                    <option>Quetta</option>
-                    <option>Multan</option>
-                    <option>Faisalabad</option>
-                </select>
+            <p id="status" class="status current-status" role="status" data-state="loading">Waiting for data…</p>
 
-                <button id="refresh-btn">Refresh Data</button>
+            <div id="current-overview" class="overview-panel" aria-busy="true">
+                <div class="aqi-overview">
+                    <p class="reading-label">US Air Quality Index</p>
+                    <div class="aqi-reading">
+                        <span id="aqi-value" class="aqi-number">—</span>
+                        <div class="aqi-interpretation">
+                            <p id="aqi-category" class="category-marker" data-level="unavailable">Unavailable</p>
+                            <p id="aqi-explanation">An AQI estimate is needed to show a category.</p>
+                        </div>
+                    </div>
+
+                    <div class="scale-heading">
+                        <span>US AQI scale</span>
+                        <a href="#aqi-guide">Category guide</a>
+                    </div>
+                    <div id="aqi-scale" class="aqi-scale" role="img" aria-label="US AQI scale from 0 to 500. Estimate unavailable.">
+                        <div id="aqi-scale-bands" class="aqi-scale-bands" aria-hidden="true"></div>
+                        <span id="aqi-scale-marker" class="aqi-scale-marker" aria-hidden="true" hidden></span>
+                        <div id="aqi-scale-ticks" class="aqi-scale-ticks" aria-hidden="true"></div>
+                    </div>
+                    <p id="aqi-scale-note" class="scale-note">Estimate unavailable</p>
+                </div>
+
+                <div class="overview-details">
+                    <dl class="particle-readings">
+                        <div>
+                            <dt>PM2.5</dt>
+                            <dd><span id="pm25-value">—</span> <span class="unit">µg/m³</span></dd>
+                        </div>
+                        <div>
+                            <dt>PM10</dt>
+                            <dd><span id="pm10-value">—</span> <span class="unit">µg/m³</span></dd>
+                        </div>
+                    </dl>
+                    <dl class="estimate-details">
+                        <div><dt>Estimate valid at</dt><dd id="updated-at">Unavailable</dd></div>
+                        <div><dt>Source</dt><dd>Open-Meteo · CAMS Global</dd></div>
+                    </dl>
+                    <p class="estimate-note">Regional model estimates describe the area around the city. A local sensor measures the air at one site, so its reading can differ.</p>
+                </div>
             </div>
         </section>
 
-        <p id="status" role="status">Waiting for data...</p>
-
-        <section class="stats">
-            <article class="card">
-                <h2>Air Quality Index</h2>
-                <p id="aqi-value">--</p>
-                <span id="aqi-category">Not loaded</span>
-            </article>
-
-            <article class="card">
-                <h2>PM2.5</h2>
-                <p id="pm25-value">--</p>
-                <span>µg/m³</span>
-            </article>
-
-            <article class="card">
-                <h2>PM10</h2>
-                <p id="pm10-value">--</p>
-                <span>µg/m³</span>
-            </article>
-        </section>
-
-        <section class="dashboard-grid">
-            <article class="panel">
-                <h2>Air Quality Forecast</h2>
-                <canvas id="aqi-chart"></canvas>
-            </article>
-
-            <article class="panel">
-                <h2>Pakistan Air Quality Map</h2>
-                <div id="map"></div>
-            </article>
-        </section>
-
-        <section class="panel comparison-section" aria-labelledby="comparison-heading">
-            <h2 id="comparison-heading">Compare Air Quality Across Pakistan</h2>
-            <p>Latest available modeled air-quality estimates for major cities.</p>
-            <p id="comparison-status" role="status">Loading city comparisons...</p>
-
-            <div id="comparison-scroll" class="table-container" role="region"
-                aria-labelledby="comparison-heading" tabindex="0" hidden>
-                <table id="comparison-table" aria-labelledby="comparison-heading">
+        <section id="forecast" class="page-section" aria-labelledby="forecast-heading">
+            <div class="forecast-header">
+                <div>
+                    <h2 id="forecast-heading">24-hour forecast</h2>
+                    <p class="section-note">Hourly model estimates in Pakistan Standard Time (PKT).</p>
+                </div>
+                <fieldset class="forecast-metrics">
+                    <legend>Forecast metric</legend>
+                    <div class="metric-options">
+                        <label><input type="radio" name="forecast-metric" value="us_aqi" checked><span>US AQI</span></label>
+                        <label><input type="radio" name="forecast-metric" value="pm2_5"><span>PM2.5</span></label>
+                        <label><input type="radio" name="forecast-metric" value="pm10"><span>PM10</span></label>
+                    </div>
+                </fieldset>
+            </div>
+            <p id="forecast-coverage" class="forecast-coverage" role="status">Waiting for forecast data…</p>
+            <p id="forecast-summary" class="forecast-summary" hidden></p>
+            <div id="forecast-plot" class="chart-frame" hidden>
+                <canvas id="aqi-chart" role="img" aria-label="US AQI forecast"
+                    aria-describedby="forecast-coverage forecast-summary"></canvas>
+            </div>
+            <p id="forecast-visual-note" class="section-note" hidden>Chart unavailable. Open the hourly table below to see the forecast values.</p>
+            <div id="forecast-guides" class="forecast-guides" hidden>
+                <p>Dashed lines mark US AQI category upper limits.</p>
+                <ul id="forecast-guide-labels"></ul>
+            </div>
+            <details id="forecast-details" class="forecast-details" hidden>
+                <summary>View hourly values</summary>
+                <table class="forecast-table">
+                    <caption id="forecast-table-caption">Hourly forecast</caption>
                     <thead>
-                        <tr>
-                            <th scope="col">City</th>
-                            <th scope="col">US AQI</th>
-                            <th scope="col">Category</th>
-                            <th scope="col">PM2.5 (µg/m³)</th>
-                            <th scope="col">PM10 (µg/m³)</th>
-                        </tr>
+                        <tr><th scope="col">Forecast time (PKT)</th><th id="forecast-value-heading" scope="col">US AQI</th>
+                            <th id="forecast-category-heading" scope="col">Category</th></tr>
                     </thead>
-                    <tbody id="comparison-body"></tbody>
+                    <tbody id="forecast-table-body"></tbody>
                 </table>
-            </div>
+            </details>
         </section>
 
-        <footer>
-            <p id="updated-at">Data time: Not available</p>
-            <p>
-                Modeled estimates, not local sensor readings.
-                Data: Open-Meteo / CAMS.
-            </p>
-        </footer>
+        <div class="page-section regional-grid">
+            <section id="compare" class="comparison-section" aria-labelledby="comparison-heading">
+                <h2 id="comparison-heading">Compare seven cities</h2>
+                <p id="comparison-order" class="section-note">Highest available US AQI first. Cities with unavailable AQI are listed last.</p>
+                <p id="comparison-status" class="status" role="status">Loading city comparisons…</p>
+
+                <div id="comparison-scroll" class="table-container" role="region"
+                    aria-labelledby="comparison-heading" tabindex="0" hidden>
+                    <table id="comparison-table" role="table" aria-labelledby="comparison-heading" aria-describedby="comparison-order">
+                        <thead role="rowgroup">
+                            <tr role="row">
+                                <th scope="col" role="columnheader">City</th>
+                                <th scope="col" role="columnheader" aria-sort="descending">US AQI</th>
+                                <th scope="col" role="columnheader">Category</th>
+                                <th scope="col" role="columnheader">PM2.5 <span class="table-unit">µg/m³</span></th>
+                                <th scope="col" role="columnheader">PM10 <span class="table-unit">µg/m³</span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="comparison-body" role="rowgroup"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="city-map" class="map-section" aria-labelledby="map-heading">
+                <h2 id="map-heading">City map</h2>
+                <p class="section-note">Choose a marker to see its estimate and select the city.</p>
+                <div id="map" role="region" aria-labelledby="map-heading"></div>
+                <p id="map-status" class="status" role="status">Loading the map and city markers…</p>
+                <div id="map-key" class="map-key" hidden>
+                    <h3 id="map-key-heading">US AQI map key</h3>
+                    <ul id="map-legend" aria-labelledby="map-key-heading"></ul>
+                </div>
+            </section>
+        </div>
+
+        <section id="aqi-guide" class="page-section guide-grid" aria-labelledby="guide-heading">
+            <div>
+                <h2 id="guide-heading">How to read the AQI</h2>
+                <p class="section-note">The US AQI summarizes air pollution on a single scale. A higher number indicates greater health concern.</p>
+                <p class="section-note"><strong>Why US AQI?</strong> US AQI is the air-quality scale we use to compare pollution levels in Pakistani cities.</p>
+                <dl id="aqi-guide-levels" class="aqi-guide"></dl>
+                <a href="https://www.airnow.gov/aqi/aqi-basics/">US AQI guide from AirNow</a>
+            </div>
+            <div id="methodology" class="methodology">
+                <h2>About the data</h2>
+                <p>Anemos uses the Copernicus Atmosphere Monitoring Service (CAMS) global model through Open-Meteo. Its grid spacing is about 45 km. Pollution can vary from street to street within that area.</p>
+                <p>“Estimate valid at” shows the time the values describe, in Pakistan Standard Time (PKT). Model runs and data retrieval have their own times.</p>
+                <p>PM2.5 and PM10 describe particles up to about 2.5 and 10 micrometres across. The unit µg/m³ is micrograms of particles per cubic metre of air.</p>
+            </div>
+        </section>
     </main>
 
+    <footer class="page-shell page-footer">
+        <p>Data from <a href="https://open-meteo.com/en/docs/air-quality-api">Open-Meteo</a> and the
+            <a href="https://ads.atmosphere.copernicus.eu/datasets/cams-global-atmospheric-composition-forecasts?tab=overview">Copernicus Atmosphere Monitoring Service</a>.
+            Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>.</p>
+    </footer>
 </body>
 </html>
