@@ -37,10 +37,10 @@ Anemos is a web dashboard for exploring air quality in seven Pakistani cities. I
 
 On Ubuntu, install the prerequisites with `sudo apt install git python3 python3-venv` if needed. Anemos requires Python 3.11 or newer. The setup below was verified on Linux with Python 3.14.
 
-Replace `REPOSITORY_URL` with the clone URL once the repository is published. If you already have the project, run the setup commands from its root.
+Clone the repository using the command below. If you already have the project, run the setup commands from its root.
 
 ```sh
-git clone REPOSITORY_URL anemos
+git clone https://github.com/Noor-hassan967/anemos.git anemos
 cd anemos
 ```
 
