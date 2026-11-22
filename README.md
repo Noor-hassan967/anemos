@@ -1,43 +1,101 @@
 # Anemos — Pakistan Air Quality Analytics
 
-Anemos shows modeled air-quality readings, forecasts, and city comparisons for Pakistan. FastAPI serves the dashboard and its same-origin JSON API.
+## Project Overview
 
-## Run locally
+Anemos is a web dashboard for exploring air quality in seven Pakistani cities. It brings current estimates, short-term forecasts, and city comparisons into one place. Residents, students, and others following air pollution can use it to see how conditions vary across cities and over the next day.
 
-From the project root, with the dependencies in `requirements.txt` already installed in `.venv`:
+## Features
+
+- View air quality for Peshawar, Lahore, Karachi, Islamabad, Quetta, Multan, and Faisalabad.
+- See the US Air Quality Index (AQI), its health category, and PM2.5 and PM10 concentrations in µg/m³.
+- Switch between US AQI, PM2.5, and PM10 in the interactive 24-hour forecast chart. An hourly table shows the values in Pakistan Standard Time (PKT).
+- Explore an interactive map of Pakistan with selectable city markers that show the available AQI and its category.
+- Compare all seven cities in a table ordered by highest available US AQI.
+- Use the dashboard on desktop and mobile with a responsive layout.
+
+## Technology Stack
+
+- **Python and FastAPI** serve the dashboard and JSON API. Uvicorn runs the application, and HTTPX fetches air-quality data.
+- **HTML, CSS, and JavaScript** build the browser interface. Chart.js renders forecasts, and Leaflet displays the map using OpenStreetMap tiles.
+- **Open-Meteo Air Quality API** supplies the current estimates and forecasts from the CAMS global model.
+
+## Project Structure
+
+| Path | Purpose |
+| --- | --- |
+| `backend/main.py` | FastAPI application, API routes, and Open-Meteo integration |
+| `backend/cities.py` | Supported cities and their coordinates |
+| `backend/provider_cache.py` | In-memory cache and upstream request limits |
+| `backend/security.py` | Security headers and API rate limiting |
+| `frontend/index.html` and `frontend/style.css` | Dashboard markup and responsive styles |
+| `frontend/app.js` and `frontend/forecast.js` | Dashboard, map, and forecast behavior |
+| `frontend/assets/` | Branding images and favicon |
+| `tests/test_api.py` | API, caching, and security tests |
+| `requirements.txt` | Pinned Python dependencies for the application and tests |
+
+## Local Installation
+
+On Ubuntu, install the prerequisites with `sudo apt install git python3 python3-venv` if needed. Anemos requires Python 3.11 or newer. The setup below was verified on Linux with Python 3.14.
+
+Replace `REPOSITORY_URL` with the clone URL once the repository is published. If you already have the project, run the setup commands from its root.
 
 ```sh
-.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --no-proxy-headers
-.venv/bin/python -m pytest -q
+git clone REPOSITORY_URL anemos
+cd anemos
 ```
 
-Open `http://127.0.0.1:8000/`. The tests use mocked Open-Meteo responses. Swagger UI, ReDoc, and the OpenAPI schema are disabled by default. For local API documentation, set `ANEMOS_ENABLE_API_DOCS=1` when starting the loopback server. The interactive docs load their own assets and are exempt from the dashboard's Content Security Policy. FastAPI debug mode stays off.
+Create and activate a virtual environment, install the dependencies, and start the server.
 
-## Security review
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m uvicorn backend.main:app --host 127.0.0.1 --no-proxy-headers
+```
 
-- The API accepts only supported city names. It uses server-owned coordinates and a fixed Open-Meteo HTTPS endpoint with redirects disabled and bounded timeouts. It validates provider responses and returns generic error messages to clients.
-- The public file root is the repository's `frontend/` directory. Files outside it and symlinks pointing outside it are excluded. Treat every file placed in `frontend/` as public. A pattern-based check of tracked files and Git history found no likely credentials. Environment files, AWS configuration, and common private-key files are excluded from Git by default.
-- The dashboard uses a Content Security Policy, framing protection, MIME sniffing protection, and restrictive browser permissions. The frontend calls the same origin, so the API sends no cross-origin permissions. CORS is a browser control and public endpoints can still be called directly.
-- Chart.js and Leaflet use pinned CDN URLs and integrity hashes. Update the URL, hash, and Content Security Policy together when changing either version. Leaflet's popup API can render raw HTML strings. Anemos passes DOM nodes and inserts city and AQI values as text. [Leaflet popup API](https://leafletjs.com/reference.html#layer-bindpopup)
-- Map tiles come from `https://tile.openstreetmap.org`. The map links to OpenStreetMap attribution, and `strict-origin-when-cross-origin` sends the site's origin as the referrer on cross-origin HTTPS tile requests. Browser caching follows tile response headers. Tile delivery depends on OpenStreetMap availability and its usage policy. [OpenStreetMap tile policy](https://operations.osmfoundation.org/policies/tiles/)
-- Each worker allows an aggregate burst of 60 requests and replenishes 20 requests per second across `/api/air-quality`, `/api/compare`, and `/api/cities`, including cache hits. Excess requests get `429` with `Retry-After: 1`. Static assets and `/api/health` remain available. The separate 10-minute cache, three-call Open-Meteo concurrency cap, and one-second wait for outbound capacity also apply per worker.
+Open <http://127.0.0.1:8000/> in a browser. If port 8000 is in use, add `--port 8001` to the Uvicorn command and open <http://127.0.0.1:8001/>. The dashboard needs internet access for air-quality data, map tiles, and the chart and map libraries.
 
-### Dependency audit
+## Running Tests
 
-On November 22, 2026, the PyPI release advisory API reported no active advisories for the 28 exact versions in `requirements.txt`. The local installer, `pip 25.1.1`, had six distinct CVEs. The reported fixes span `25.3` through `26.2`. Use an approved, patched installer for builds and rerun the audit on the environment you plan to deploy. Pip is a build tool here. The audit covers published advisories for the application pins and local pip version. Check operating-system and Python interpreter security separately. [PyPI advisory API](https://docs.pypi.org/api/json/#known-vulnerabilities) · [Advisories for pip 25.1.1](https://pypi.org/pypi/pip/25.1.1/json)
-
-The pip findings were `CVE-2025-8869`, `CVE-2026-1703`, `CVE-2026-3219`, `CVE-2026-6357`, `CVE-2026-8643`, and `CVE-2026-13346`.
-
-## Deploy behind HTTPS
-
-For a TLS-terminating reverse proxy on the same machine, start the app on a private loopback port:
+From the project root with the virtual environment active, run:
 
 ```sh
-.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 \
-  --proxy-headers --forwarded-allow-ips=127.0.0.1 --no-server-header
+python -m pytest -q
 ```
 
-- **TLS and host validation.** Configure certificates, HTTP-to-HTTPS redirects, expected hostnames, and HSTS at the gateway. Keep the Uvicorn origin private. The gateway should replace incoming forwarded headers with trusted values. If the proxy is on another host, use a private origin and trust only the actual proxy address or network. Keep API docs opt-in disabled and leave reload off. [FastAPI proxy configuration](https://fastapi.tiangolo.com/advanced/behind-a-proxy/)
-- **Traffic limits.** Apply per-client and aggregate limits at the gateway, with connection and request-size limits. A single client can consume the application's shared bucket. Workers and instances each start with a cold cache and their own limits, so scaling out increases total possible provider traffic. Use the gateway for shared enforcement across workers.
-- **Provider dependencies.** Confirm Open-Meteo quota and usage terms for the deployment. Monitor `429`, `502`, and `503` rates and provider availability. The CDN and tile server remain external dependencies, and browsers disclose their IP addresses and site origin during those requests. [Open-Meteo plan and usage information](https://open-meteo.com/en/pricing)
-- **Hosting verification.** Check the deployed hostname, certificate, HTTPS redirect, HSTS, forwarded-header handling, and gateway limits in staging. Keep deployment credentials in the hosting provider's secret store.
+The tests mock Open-Meteo responses and cover API behavior, provider failures, caching, and security controls.
+
+## API Endpoints
+
+| Method and path | Query parameters | Response |
+| --- | --- | --- |
+| `GET /api/health` | None | Application status and name |
+| `GET /api/cities` | None | Supported cities with latitude and longitude |
+| `GET /api/air-quality` | Optional `city`. Defaults to `Peshawar`. | Current and hourly US AQI, PM2.5, and PM10 estimates for one city |
+| `GET /api/compare` | None | Current US AQI, PM2.5, PM10, and estimate times for all seven cities |
+
+City names are case-insensitive. An unsupported city returns HTTP `400`. For example, `/api/air-quality?city=Lahore` requests estimates for Lahore.
+
+Swagger UI, ReDoc, and the OpenAPI schema are disabled by default. To enable them locally, set `ANEMOS_ENABLE_API_DOCS=1` when starting Uvicorn.
+
+## Data Source and Limitations
+
+Open-Meteo supplies modeled air-quality estimates from the Copernicus Atmosphere Monitoring Service (CAMS) global model. These estimates describe a region around each city. A physical sensor measures conditions at a single location, so actual street-level air quality can differ. Anemos uses the US AQI scale. Data may be delayed, incomplete, or temporarily unavailable. [Open-Meteo Air Quality API](https://open-meteo.com/en/docs/air-quality-api), [CAMS global forecasts](https://ads.atmosphere.copernicus.eu/datasets/cams-global-atmospheric-composition-forecasts?tab=overview)
+
+The dashboard credits Open-Meteo, CAMS, and OpenStreetMap contributors. Anemos uses the free Open-Meteo endpoint, which has non-commercial terms and request quotas. OpenStreetMap's public tile servers have a separate usage policy. [Open-Meteo terms](https://open-meteo.com/en/terms), [OpenStreetMap attribution](https://www.openstreetmap.org/copyright), [Tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
+
+## Security and Reliability
+
+- The API accepts supported city names, uses server-defined coordinates, and validates provider responses. Upstream calls have timeouts, and errors return general messages to clients.
+- Each worker caches successful air-quality and comparison results for 10 minutes, shares in-progress fetches for the same data, and limits concurrent Open-Meteo calls. A separate per-worker rate limit covers the city list, air-quality, and comparison endpoints, including cache hits.
+- The dashboard uses a Content Security Policy and makes same-origin API requests. The server also sends headers that restrict framing, MIME sniffing, and browser permissions.
+- Python dependency versions are pinned in `requirements.txt`. The CDN versions of Chart.js and Leaflet are pinned and loaded with integrity checks.
+
+## Screenshots
+
+Desktop and mobile screenshots will be added here once they are prepared.
+
+## Deployment
+
+Public deployment is pending. Before launch, verify HTTPS and proxy settings, traffic limits, and provider quotas for the expected usage.
