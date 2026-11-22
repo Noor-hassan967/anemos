@@ -94,7 +94,15 @@ The dashboard credits Open-Meteo, CAMS, and OpenStreetMap contributors. Anemos u
 
 ## Screenshots
 
-Desktop and mobile screenshots will be added here once they are prepared.
+Both full-page Chromium captures show Peshawar with live Open-Meteo estimates valid at 19:00 PKT on 22 November 2026.
+
+**Desktop (1440 px)**
+
+![Anemos desktop dashboard with the AQI overview, forecast, city comparison, and map](docs/screenshots/anemos-desktop.png)
+
+**Mobile (390 px)**
+
+![Anemos mobile dashboard with the AQI overview, forecast, city comparison, and map](docs/screenshots/anemos-mobile.png)
 
 ## Deployment
 
