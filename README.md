@@ -1,6 +1,6 @@
-# PakAir
+# Anemos — Pakistan Air Quality Analytics
 
-PakAir shows modeled air-quality readings, forecasts, and city comparisons for Pakistan. FastAPI serves the dashboard and its same-origin JSON API.
+Anemos shows modeled air-quality readings, forecasts, and city comparisons for Pakistan. FastAPI serves the dashboard and its same-origin JSON API.
 
 ## Run locally
 
@@ -11,14 +11,14 @@ From the project root, with the dependencies in `requirements.txt` already insta
 .venv/bin/python -m pytest -q
 ```
 
-Open `http://127.0.0.1:8000/`. The tests use mocked Open-Meteo responses. Swagger UI, ReDoc, and the OpenAPI schema are disabled by default. For local API documentation, set `PAKAIR_ENABLE_API_DOCS=1` when starting the loopback server. The interactive docs load their own assets and are exempt from the dashboard's Content Security Policy. FastAPI debug mode stays off.
+Open `http://127.0.0.1:8000/`. The tests use mocked Open-Meteo responses. Swagger UI, ReDoc, and the OpenAPI schema are disabled by default. For local API documentation, set `ANEMOS_ENABLE_API_DOCS=1` when starting the loopback server. The interactive docs load their own assets and are exempt from the dashboard's Content Security Policy. FastAPI debug mode stays off.
 
 ## Security review
 
 - The API accepts only supported city names. It uses server-owned coordinates and a fixed Open-Meteo HTTPS endpoint with redirects disabled and bounded timeouts. It validates provider responses and returns generic error messages to clients.
 - The public file root is the repository's `frontend/` directory. Files outside it and symlinks pointing outside it are excluded. Treat every file placed in `frontend/` as public. A pattern-based check of tracked files and Git history found no likely credentials. Environment files, AWS configuration, and common private-key files are excluded from Git by default.
 - The dashboard uses a Content Security Policy, framing protection, MIME sniffing protection, and restrictive browser permissions. The frontend calls the same origin, so the API sends no cross-origin permissions. CORS is a browser control and public endpoints can still be called directly.
-- Chart.js and Leaflet use pinned CDN URLs and integrity hashes. Update the URL, hash, and Content Security Policy together when changing either version. Leaflet's popup API can render raw HTML strings. PakAir passes DOM nodes and inserts city and AQI values as text. [Leaflet popup API](https://leafletjs.com/reference.html#layer-bindpopup)
+- Chart.js and Leaflet use pinned CDN URLs and integrity hashes. Update the URL, hash, and Content Security Policy together when changing either version. Leaflet's popup API can render raw HTML strings. Anemos passes DOM nodes and inserts city and AQI values as text. [Leaflet popup API](https://leafletjs.com/reference.html#layer-bindpopup)
 - Map tiles come from `https://tile.openstreetmap.org`. The map links to OpenStreetMap attribution, and `strict-origin-when-cross-origin` sends the site's origin as the referrer on cross-origin HTTPS tile requests. Browser caching follows tile response headers. Tile delivery depends on OpenStreetMap availability and its usage policy. [OpenStreetMap tile policy](https://operations.osmfoundation.org/policies/tiles/)
 - Each worker allows an aggregate burst of 60 requests and replenishes 20 requests per second across `/api/air-quality`, `/api/compare`, and `/api/cities`, including cache hits. Excess requests get `429` with `Retry-After: 1`. Static assets and `/api/health` remain available. The separate 10-minute cache, three-call Open-Meteo concurrency cap, and one-second wait for outbound capacity also apply per worker.
 

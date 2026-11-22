@@ -65,7 +65,7 @@ async def test_health(client):
     response = await client.get("/api/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "application": "PakAir"}
+    assert response.json() == {"status": "ok", "application": "Anemos"}
 
 
 async def test_cities(client):
@@ -563,6 +563,7 @@ async def test_local_docs_opt_in_keeps_debug_disabled():
 
     assert not app.debug
     assert docs.status_code == schema.status_code == dashboard.status_code == 200
+    assert schema.json()["info"]["title"] == "Anemos API"
     assert AIR_QUALITY in schema.json()["paths"]
     assert "content-security-policy" in dashboard.headers
     assert docs.headers["x-frame-options"] == "DENY"

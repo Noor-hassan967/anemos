@@ -85,7 +85,7 @@ def _provider_section(record, key: str) -> dict:
 
 @api.get("/api/health")
 def health_check():
-    return {"status": "ok", "application": "PakAir"}
+    return {"status": "ok", "application": "Anemos"}
 
 
 @api.get("/api/air-quality")
@@ -198,7 +198,7 @@ async def _load_comparison() -> dict:
 
 def create_app(*, enable_api_docs: bool = False) -> FastAPI:
     application = FastAPI(
-        title="PakAir API",
+        title="Anemos API",
         debug=False,
         lifespan=_lifespan,
         openapi_url="/openapi.json" if enable_api_docs else None,
@@ -210,4 +210,4 @@ def create_app(*, enable_api_docs: bool = False) -> FastAPI:
     return application
 
 
-app = create_app(enable_api_docs=os.getenv("PAKAIR_ENABLE_API_DOCS") == "1")
+app = create_app(enable_api_docs=os.getenv("ANEMOS_ENABLE_API_DOCS") == "1")
