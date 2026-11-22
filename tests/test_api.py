@@ -1,11 +1,12 @@
 import asyncio
+import re
 from collections import deque
 
 import httpx
 import pytest
 from httpx import AsyncClient
 
-from backend import main, provider_cache
+from backend import main, provider_cache, security
 from backend.cities import CITIES
 
 
@@ -53,8 +54,9 @@ def anyio_backend():
 
 @pytest.fixture
 async def client(provider):
-    transport = httpx.ASGITransport(app=main.app)
-    async with main.app.router.lifespan_context(main.app):
+    app = main.create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with app.router.lifespan_context(app):
         async with AsyncClient(transport=transport, base_url="http://testserver") as test_client:
             yield test_client
 
@@ -451,4 +453,128 @@ async def test_cancelled_caller_does_not_cancel_shared_fetch(client, provider):
         release.set()
 
     assert second.result().status_code == 200
+    assert len(requests) == 1
+
+
+@pytest.mark.parametrize("path", ["/", "/app.js", "/style.css", "/api/health", "/unlisted"])
+async def test_security_headers_cover_dashboard_assets_api_and_not_found(client, path):
+    response = await client.get(path)
+
+    assert response.status_code == (404 if path == "/unlisted" else 200)
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+    assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
+    policy = response.headers["content-security-policy"]
+    assert "default-src 'none'" in policy
+    assert "connect-src 'self'" in policy
+    assert "frame-ancestors 'none'" in policy
+    assert "https://tile.openstreetmap.org" in policy
+    assert "'unsafe-inline'" not in policy
+    assert "'unsafe-eval'" not in policy
+
+
+async def test_external_dashboard_assets_have_integrity_and_are_allowed_by_csp(client):
+    response = await client.get("/")
+    tags = re.findall(r'<(?:link|script)\b[^>]+https://cdn\.jsdelivr\.net[^>]+>', response.text)
+
+    assert len(tags) == 3
+    for tag in tags:
+        url = re.search(r'https://cdn\.jsdelivr\.net/[^"<>]+', tag).group()
+        assert url in response.headers["content-security-policy"]
+        assert re.search(r'integrity="sha384-[A-Za-z0-9+/]{64}"', tag)
+        assert 'crossorigin="anonymous"' in tag
+
+
+@pytest.mark.parametrize("path", ["/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json"])
+async def test_api_docs_are_disabled_by_default(client, path):
+    assert (await client.get(path)).status_code == 404
+
+
+async def test_local_docs_opt_in_keeps_debug_disabled():
+    app = main.create_app(enable_api_docs=True)
+    transport = httpx.ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as docs_client:
+        docs = await docs_client.get("/docs")
+        schema = await docs_client.get("/openapi.json")
+        dashboard = await docs_client.get("/")
+
+    assert not app.debug
+    assert docs.status_code == schema.status_code == dashboard.status_code == 200
+    assert AIR_QUALITY in schema.json()["paths"]
+    assert "content-security-policy" in dashboard.headers
+    assert docs.headers["x-frame-options"] == "DENY"
+
+
+@pytest.mark.parametrize("path", ["/backend/main.py", "/requirements.txt", "/.git/config", "/.env"])
+async def test_project_files_outside_frontend_are_not_served(client, path):
+    assert (await client.get(path)).status_code == 404
+
+
+async def test_static_mount_excludes_symlinks_outside_frontend(tmp_path, monkeypatch):
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    private_file = tmp_path / "private.txt"
+    private_file.write_text("Private file")
+    (frontend / "linked.txt").symlink_to(private_file)
+    monkeypatch.setattr(main, "FRONTEND_DIR", frontend)
+
+    transport = httpx.ASGITransport(app=main.create_app())
+    async with AsyncClient(transport=transport, base_url="http://testserver") as static_client:
+        response = await static_client.get("/linked.txt")
+
+    assert response.status_code == 404
+
+
+async def test_untrusted_origins_are_not_given_cors_access(client):
+    headers = {"Origin": "https://unrelated.example"}
+    response = await client.get("/api/health", headers=headers)
+    preflight = await client.options(AIR_QUALITY, headers={**headers, "Access-Control-Request-Method": "GET"})
+
+    assert response.status_code == 200
+    assert preflight.status_code == 405
+    assert "access-control-allow-origin" not in response.headers
+    assert "access-control-allow-origin" not in preflight.headers
+
+
+async def test_unexpected_failure_returns_generic_500_with_security_headers(monkeypatch):
+    async def fail(city):
+        raise RuntimeError("Private internal detail")
+
+    monkeypatch.setattr(main, "_load_air_quality", fail)
+    app = main.create_app()
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=transport, base_url="http://testserver") as error_client:
+            response = await error_client.get(AIR_QUALITY)
+
+    assert response.status_code == 500
+    assert response.text == "Internal Server Error"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "content-security-policy" in response.headers
+
+
+async def test_worker_rate_limit_counts_cache_hits_and_recovers(client, provider, monkeypatch):
+    responses, requests = provider
+    responses.append(httpx.Response(200, json=_provider_reading(AIR_QUALITY, 83)))
+    now = security.monotonic()
+    monkeypatch.setattr(security, "monotonic", lambda: now)
+
+    for _ in range(60):
+        assert (await client.get(AIR_QUALITY)).status_code == 200
+
+    for path in (AIR_QUALITY, f"{AIR_QUALITY}/", COMPARE, "/api/cities"):
+        blocked = await client.get(path, headers={"X-Forwarded-For": "192.0.2.1"})
+        assert blocked.status_code == 429
+        assert blocked.headers["retry-after"] == "1"
+        assert blocked.headers["cache-control"] == "no-store"
+        assert blocked.headers["x-content-type-options"] == "nosniff"
+        assert blocked.json() == {"detail": "Too many API requests. Please try again shortly."}
+
+    assert (await client.get("/")).status_code == 200
+    assert (await client.get("/api/health")).status_code == 200
+    now += 1
+    for _ in range(20):
+        assert (await client.get(AIR_QUALITY)).status_code == 200
+    assert (await client.get(AIR_QUALITY)).status_code == 429
     assert len(requests) == 1

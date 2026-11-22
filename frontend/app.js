@@ -221,9 +221,9 @@ async function initializeMap() {
         }).setView([30.4, 69.3], 5);
 
         L.tileLayer(
-            "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
             {
-                attribution: '&copy; OpenStreetMap contributors',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
                 maxZoom: 18
             }
         ).addTo(map);

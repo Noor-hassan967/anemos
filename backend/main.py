@@ -1,31 +1,39 @@
 import asyncio
 import math
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.cities import CITIES
 from backend.provider_cache import ProviderCache
+from backend.security import SECURITY_HEADERS, ApiRateLimiter, SecurityMiddleware
 
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 OPEN_METEO_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 AIR_QUALITY_TIMEOUT_SECONDS = 15.0
 COMPARE_TIMEOUT_SECONDS = 20.0
 PROVIDER_FIELDS = {"time": (str,), "us_aqi": (int, float), "pm2_5": (int, float), "pm10": (int, float)}
+api = APIRouter()
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     cache = ProviderCache()
     app.state.provider_cache = cache
+    app.state.api_rate_limiter = ApiRateLimiter()
     try:
         yield
     finally:
         await cache.close()
 
 
-app = FastAPI(title="PakAir API", lifespan=_lifespan)
+async def _internal_error(_request: Request, _error: Exception) -> PlainTextResponse:
+    return PlainTextResponse("Internal Server Error", status_code=500, headers=SECURITY_HEADERS)
 
 
 def _finite_float(value: str) -> float:
@@ -72,12 +80,12 @@ def _provider_section(record, key: str) -> dict:
     return section
 
 
-@app.get("/api/health")
+@api.get("/api/health")
 def health_check():
     return {"status": "ok", "application": "PakAir"}
 
 
-@app.get("/api/air-quality")
+@api.get("/api/air-quality")
 async def get_air_quality(request: Request, city: str = "Peshawar"):
     city_name = city.strip().title()
 
@@ -121,7 +129,7 @@ async def _load_air_quality(city_name: str) -> dict:
     }
 
 
-@app.get("/api/cities")
+@api.get("/api/cities")
 def get_cities():
     return [
         {"name": name, **coordinates}
@@ -129,7 +137,7 @@ def get_cities():
     ]
 
 
-@app.get("/api/compare")
+@api.get("/api/compare")
 async def compare_cities(request: Request):
     return await request.app.state.provider_cache.get_or_load("compare", _load_comparison)
 
@@ -172,4 +180,18 @@ async def _load_comparison() -> dict:
     }
 
 
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+def create_app(*, enable_api_docs: bool = False) -> FastAPI:
+    application = FastAPI(
+        title="PakAir API",
+        debug=False,
+        lifespan=_lifespan,
+        openapi_url="/openapi.json" if enable_api_docs else None,
+        exception_handlers={500: _internal_error},
+    )
+    application.add_middleware(SecurityMiddleware, docs_enabled=enable_api_docs)
+    application.include_router(api)
+    application.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True, follow_symlink=False), name="frontend")
+    return application
+
+
+app = create_app(enable_api_docs=os.getenv("PAKAIR_ENABLE_API_DOCS") == "1")
