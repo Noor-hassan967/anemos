@@ -1,8 +1,10 @@
 import asyncio
+import logging
 import math
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from time import monotonic
 
 import httpx
 from fastapi import APIRouter, FastAPI, HTTPException, Request
@@ -19,6 +21,7 @@ AIR_QUALITY_TIMEOUT_SECONDS = 15.0
 COMPARE_TIMEOUT_SECONDS = 20.0
 PROVIDER_FIELDS = {"time": (str,), "us_aqi": (int, float), "pm2_5": (int, float), "pm10": (int, float)}
 api = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -153,11 +156,17 @@ async def _load_comparison() -> dict:
         "domains": "cams_global",
     }
 
+    started_at = monotonic()
+    stage = "fetch"
+    received_records = None
     try:
         data = await _fetch_provider_data(params, timeout=COMPARE_TIMEOUT_SECONDS)
-        if not isinstance(data, list) or len(data) != len(names):
+        stage = "batch_shape"
+        received_records = len(data) if isinstance(data, list) else None
+        if received_records != len(names):
             raise ValueError("Expected one provider record per city")
 
+        stage = "readings"
         results = []
         for name, record in zip(names, data, strict=True):
             current = _provider_section(record, "current")
@@ -169,6 +178,13 @@ async def _load_comparison() -> dict:
                 "time": current.get("time"),
             })
     except (httpx.HTTPError, TimeoutError, ValueError) as exc:
+        upstream_status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+        logger.warning(
+            "Open-Meteo comparison failed stage=%s error=%s upstream_status=%s "
+            "expected_records=%d received_records=%s elapsed_ms=%d",
+            stage, type(exc).__name__, upstream_status, len(names), received_records,
+            round((monotonic() - started_at) * 1000),
+        )
         raise HTTPException(
             status_code=502,
             detail="City comparison data is unavailable"

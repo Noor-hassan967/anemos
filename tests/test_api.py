@@ -198,25 +198,41 @@ async def test_compare_preserves_cities_with_missing_or_partial_readings(client,
     ids=["air-quality", "compare"],
 )
 @pytest.mark.parametrize(
-    "failure", ["timeout", "connection-error", "rate-limit", "server-error", "redirect", "invalid-json"]
+    "failure", ["timeout", "connection-error", "rate-limit", "bad-gateway", "server-error", "redirect", "invalid-json"]
 )
-async def test_provider_failures_return_generic_error(client, provider, path, detail, failure):
+async def test_provider_failures_return_generic_error(client, provider, path, detail, failure, caplog):
     responses, requests = provider
     failures = {
-        "timeout": httpx.ReadTimeout("Private upstream timeout details"),
-        "connection-error": httpx.ConnectError("Private upstream connection details"),
-        "rate-limit": httpx.Response(429, text="Private upstream rate limit details"),
-        "server-error": httpx.Response(503, text="Private upstream error details"),
-        "redirect": httpx.Response(302, headers={"Location": "https://example.invalid/"}),
-        "invalid-json": httpx.Response(200, content=b"<html>Private upstream response</html>"),
+        "timeout": (httpx.ReadTimeout("Private upstream timeout details"), "ReadTimeout", None),
+        "connection-error": (httpx.ConnectError("Private upstream connection details"), "ConnectError", None),
+        "rate-limit": (httpx.Response(429, text="Private upstream rate limit details"), "HTTPStatusError", 429),
+        "bad-gateway": (httpx.Response(502, text="Private upstream gateway details"), "HTTPStatusError", 502),
+        "server-error": (httpx.Response(503, text="Private upstream error details"), "HTTPStatusError", 503),
+        "redirect": (httpx.Response(302, headers={"Location": "https://example.invalid/"}), "HTTPStatusError", 302),
+        "invalid-json": (
+            httpx.Response(200, content=b"<html>Private upstream response</html>"), "JSONDecodeError", None
+        ),
     }
-    responses.append(failures[failure])
+    provider_response, error_type, upstream_status = failures[failure]
+    responses.append(provider_response)
 
     response = await client.get(path)
 
     assert response.status_code == 502
     assert response.json() == {"detail": detail}
     assert len(requests) == 1
+    if path == COMPARE:
+        warning, = [record for record in caplog.records if record.name == "backend.main"]
+        assert warning.levelname == "WARNING"
+        assert warning.exc_info is None
+        assert re.fullmatch(
+            rf"Open-Meteo comparison failed stage=fetch error={error_type} upstream_status={upstream_status} "
+            rf"expected_records={len(CITY_NAMES)} received_records=None elapsed_ms=\d+",
+            warning.getMessage(),
+        )
+        assert "Private upstream" not in caplog.text
+        assert PROVIDER_URL not in caplog.text
+        assert "example.invalid" not in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -241,17 +257,20 @@ async def test_air_quality_rejects_malformed_provider_payload(client, provider, 
 
 
 @pytest.mark.parametrize(
-    "payload",
+    ("payload", "stage", "received_records"),
     [
-        pytest.param({"current": CURRENT}, id="object"),
-        pytest.param([], id="empty-array"),
-        pytest.param([{}] * 6, id="too-few-records"),
-        pytest.param([{}] * 8, id="too-many-records"),
-        pytest.param([None] + [{}] * 6, id="invalid-record"),
-        pytest.param([{"current": []}] + [{}] * 6, id="invalid-current"),
+        pytest.param({"current": CURRENT}, "batch_shape", None, id="object"),
+        pytest.param([], "batch_shape", 0, id="empty-array"),
+        pytest.param([{}] * 6, "batch_shape", 6, id="too-few-records"),
+        pytest.param([{}] * 8, "batch_shape", 8, id="too-many-records"),
+        pytest.param([None] + [{}] * 6, "readings", 7, id="invalid-record"),
+        pytest.param([{"current": []}] + [{}] * 6, "readings", 7, id="invalid-current"),
+        pytest.param(
+            [{"error": True, "reason": "Private upstream details"}] + [{}] * 6, "readings", 7, id="error-record"
+        ),
     ],
 )
-async def test_compare_rejects_malformed_provider_payload(client, provider, payload):
+async def test_compare_rejects_malformed_provider_payload(client, provider, payload, stage, received_records, caplog):
     responses, _ = provider
     responses.append(httpx.Response(200, json=payload))
 
@@ -259,6 +278,14 @@ async def test_compare_rejects_malformed_provider_payload(client, provider, payl
 
     assert response.status_code == 502
     assert response.json() == {"detail": COMPARE_ERROR}
+    warning, = [record for record in caplog.records if record.name == "backend.main"]
+    assert warning.exc_info is None
+    assert re.fullmatch(
+        rf"Open-Meteo comparison failed stage={stage} error=ValueError upstream_status=None "
+        rf"expected_records={len(CITY_NAMES)} received_records={received_records} elapsed_ms=\d+",
+        warning.getMessage(),
+    )
+    assert "Private upstream" not in caplog.text
 
 
 def _provider_reading(path, aqi):
@@ -318,7 +345,7 @@ async def test_cache_keys_use_normalized_city_and_ignore_unrelated_query_paramet
 
 @pytest.mark.parametrize("path", [AIR_QUALITY, COMPARE])
 @pytest.mark.parametrize("provider_status", [200, 503])
-async def test_concurrent_requests_share_a_fetch_and_its_outcome(client, provider, path, provider_status):
+async def test_concurrent_requests_share_a_fetch_and_its_outcome(client, provider, path, provider_status, caplog):
     responses, requests = provider
     started = asyncio.Event()
     release = asyncio.Event()
@@ -342,6 +369,8 @@ async def test_concurrent_requests_share_a_fetch_and_its_outcome(client, provide
     assert first.result().status_code == second.result().status_code == expected_status
     assert first.result().json() == second.result().json()
     assert len(requests) == 1
+    warnings = [record for record in caplog.records if record.name == "backend.main"]
+    assert len(warnings) == int(path == COMPARE and provider_status == 503)
 
 
 @pytest.mark.parametrize(
@@ -377,6 +406,32 @@ async def test_provider_error_does_not_poison_cache(client, provider, path):
     assert valid.status_code == 200
     assert (await client.get(path)).json() == valid.json()
     assert len(requests) == 2
+
+
+async def test_compare_upstream_error_can_surface_after_cache_expires(client, provider, monkeypatch):
+    responses, requests = provider
+    now = 100.0
+    monkeypatch.setattr(provider_cache, "monotonic", lambda: now)
+    responses.extend([
+        httpx.Response(200, json=_provider_reading(COMPARE, 83)),
+        httpx.Response(502),
+        httpx.Response(200, json=_provider_reading(COMPARE, 97)),
+    ])
+
+    first = await client.get(COMPARE)
+    assert first.status_code == 200
+    now += provider_cache.CACHE_TTL_SECONDS - 1
+    assert (await client.get(COMPARE)).json() == first.json()
+    assert len(requests) == 1
+
+    now += 1
+    failed = await client.get(COMPARE)
+    assert failed.status_code == 502
+    assert failed.json() == {"detail": COMPARE_ERROR}
+    recovered = await client.get(COMPARE)
+    assert recovered.status_code == 200
+    assert recovered.json()["cities"][0]["aqi"] == 97
+    assert len(requests) == 3
 
 
 async def test_outbound_limit_is_shared_and_cache_hits_bypass_it(client, provider):
@@ -416,19 +471,26 @@ async def test_outbound_limit_is_shared_and_cache_hits_bypass_it(client, provide
     assert len(requests) == 5
 
 
-async def test_provider_deadline_allows_retry(client, provider, monkeypatch):
+@pytest.mark.parametrize(
+    ("path", "timeout_setting"),
+    [(AIR_QUALITY, "AIR_QUALITY_TIMEOUT_SECONDS"), (COMPARE, "COMPARE_TIMEOUT_SECONDS")],
+)
+async def test_provider_deadline_allows_retry(client, provider, monkeypatch, path, timeout_setting, caplog):
     responses, requests = provider
     never_ready = asyncio.Event()
 
     async def stall(request):
         await never_ready.wait()
 
-    monkeypatch.setattr(main, "AIR_QUALITY_TIMEOUT_SECONDS", 0.05)
-    responses.extend([stall, httpx.Response(200, json=_provider_reading(AIR_QUALITY, 83))])
+    monkeypatch.setattr(main, timeout_setting, 0.05)
+    responses.extend([stall, httpx.Response(200, json=_provider_reading(path, 83))])
 
-    assert (await asyncio.wait_for(client.get(AIR_QUALITY), timeout=2)).status_code == 502
-    assert (await client.get(AIR_QUALITY)).status_code == 200
+    assert (await asyncio.wait_for(client.get(path), timeout=2)).status_code == 502
+    assert (await client.get(path)).status_code == 200
     assert len(requests) == 2
+    if path == COMPARE:
+        warning, = [record for record in caplog.records if record.name == "backend.main"]
+        assert "stage=fetch error=TimeoutError " in warning.getMessage()
 
 
 async def test_cancelled_caller_does_not_cancel_shared_fetch(client, provider):
