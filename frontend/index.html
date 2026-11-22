@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PakAir | Pakistan Air Quality Analytics</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" defer></script>
+    <script src="app.js" defer></script>
+</head>
+<body>
+
+    <header>
+        <div class="brand">Pak<span>Air</span></div>
+        <p>Pakistan Air Quality Analytics</p>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div>
+                <h1>Explore Pakistan's Air Quality</h1>
+                <p>Latest available air-quality estimates and forecasts.</p>
+            </div>
+
+            <div class="controls">
+                <label for="city-select">Select City</label>
+                <select id="city-select">
+                    <option>Peshawar</option>
+                    <option>Lahore</option>
+                    <option>Karachi</option>
+                    <option>Islamabad</option>
+                    <option>Quetta</option>
+                    <option>Multan</option>
+                    <option>Faisalabad</option>
+                </select>
+
+                <button id="refresh-btn">Refresh Data</button>
+            </div>
+        </section>
+
+        <p id="status" role="status">Waiting for data...</p>
+
+        <section class="stats">
+            <article class="card">
+                <h2>Air Quality Index</h2>
+                <p id="aqi-value">--</p>
+                <span id="aqi-category">Not loaded</span>
+            </article>
+
+            <article class="card">
+                <h2>PM2.5</h2>
+                <p id="pm25-value">--</p>
+                <span>µg/m³</span>
+            </article>
+
+            <article class="card">
+                <h2>PM10</h2>
+                <p id="pm10-value">--</p>
+                <span>µg/m³</span>
+            </article>
+        </section>
+
+        <section class="dashboard-grid">
+            <article class="panel">
+                <h2>Air Quality Forecast</h2>
+                <canvas id="aqi-chart"></canvas>
+            </article>
+
+            <article class="panel">
+                <h2>Pakistan Air Quality Map</h2>
+                <div id="map"></div>
+            </article>
+        </section>
+
+        <footer>
+            <p id="updated-at">Data time: Not available</p>
+            <p>
+                Modeled estimates, not local sensor readings.
+                Data: Open-Meteo / CAMS.
+            </p>
+        </footer>
+    </main>
+
+</body>
+</html>
